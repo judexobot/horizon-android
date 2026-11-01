@@ -102,6 +102,8 @@ are compiled once. Actions caches that directory and downloaded Rust dependencie
 native checks use a separate cache for each ABI. Cache keys include the pinned
 Rust toolchain and dependency manifests. Cargo still checks changed source files,
 and every existing test and ABI check runs on both cache hits and misses.
+Native jobs install Java 17 and Android command-line tools explicitly before the
+pinned NDK/build-tools packages, rather than relying on preinstalled runner SDKs.
 
 ## Upstream maintenance
 

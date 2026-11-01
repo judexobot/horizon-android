@@ -3,6 +3,7 @@
 
 pub const ALL_VISIBLE: u64 = (1 << 36) - 1;
 
+#[inline]
 pub(super) fn resolve(opaque: &[bool; 4096], opaque_count: usize, stack: &mut Vec<usize>) -> u64 {
     stack.clear();
     if opaque_count == 0 {
@@ -11,6 +12,10 @@ pub(super) fn resolve(opaque: &[bool; 4096], opaque_count: usize, stack: &mut Ve
     if opaque_count == 4096 {
         return 0;
     }
+    resolve_mixed(opaque, stack)
+}
+
+fn resolve_mixed(opaque: &[bool; 4096], stack: &mut Vec<usize>) -> u64 {
     let mut open = [0u16; 256];
     for (row, cells) in open.iter_mut().zip(opaque.as_chunks::<16>().0) {
         for (x, &solid) in cells.iter().enumerate() {

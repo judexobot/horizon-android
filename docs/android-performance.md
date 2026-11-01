@@ -44,3 +44,25 @@ chat, server addresses, world names, seeds or player coordinates.
 Developer regression check: `python tools/test_android_performance.py`. It runs
 the actual recorder/statistics/timing code in a host harness and substitutes only
 Android publication. The isolated storage probe tests provider access separately.
+
+Resource-pack ZIP reads stream deflated entries from the shared archive into the
+decoded output, avoiding a temporary copy of the complete compressed entry.
+Stored entries, decoded bytes, size limits and support for irregular ZIP metadata
+retain their existing behavior. This reduces temporary allocation during resource
+loading; it is not a device FPS measurement.
+
+Section visibility now floods connected 16-bit rows from the section boundary,
+instead of queuing every open voxel and scanning sealed interior cavities.
+The resulting 36 face-connectivity flags are identical to the previous traversal;
+mesh vertices, lighting, graphics settings and view distance are unchanged.
+Empty and fully opaque sections retain their shortcuts. Worker scratch stacks
+remain reusable, including after an all-visible early return.
+
+Run `python3 tools/bench_android_visibility.py` for the optimized host comparison.
+It checks 528 random sections across eleven opacity densities, boundary fixtures
+and every combination of six tunnel exits against the previous traversal. The
+benchmark alternates execution order across nine samples and reports medians for
+eight synthetic sections. Its JSON report stays under
+`.local/android/visibility-benchmark/results.json`; Actions also displays the
+results in the job summary. These timings isolate connectivity after opacity
+lookup; they do not measure complete chunk meshing or FPS on a Galaxy A15.

@@ -6,6 +6,7 @@
 mod fluid;
 mod lighting;
 mod sides;
+mod visgraph;
 use crate::{
     assets::{Assets, RenderAssets},
     biome::Biomes,
@@ -23,6 +24,7 @@ use horizon_world::{
 };
 pub use sides::Sides;
 use std::sync::Arc;
+pub use visgraph::ALL_VISIBLE;
 
 /// An entity, item and effect vertex (the entity pipelines), with a face
 /// normal for `entity.wgsl`'s directional light.
@@ -259,101 +261,26 @@ impl SectionMesh {
         Some([min - pad, max + pad])
     }
 }
-pub const ALL_VISIBLE: u64 = (1 << 36) - 1;
 /// VisGraph.resolve: flood fill non-opaque cells and connect the faces each region touches.
 #[cfg(test)]
 fn visibility(pad: &Padded, info: &[Info]) -> u64 {
     visibility_reusing(pad, info, &mut Vec::new())
 }
 fn visibility_reusing(pad: &Padded, info: &[Info], stack: &mut Vec<usize>) -> u64 {
-    // The all-visible shortcut can leave a partially filled stack behind.
-    stack.clear();
-    // Opaque cells are already visited: resolve each state's opacity once,
-    // then reuse this map for the flood fill and the uniform-section shortcuts.
-    let mut seen = [false; 4096];
+    // Resolve each state's opacity once, retaining the uniform-section shortcuts.
+    let mut opaque = [false; 4096];
     let mut opaque_count = 0;
     for y in 0..16 {
         for z in 0..16 {
             let row = pi(0, y, z);
             for x in 0..16 {
-                let opaque = info[pad.blocks[row + x] as usize].solid;
-                seen[(y as usize) << 8 | (z as usize) << 4 | x] = opaque;
-                opaque_count += usize::from(opaque);
+                let solid = info[pad.blocks[row + x] as usize].solid;
+                opaque[(y as usize) << 8 | (z as usize) << 4 | x] = solid;
+                opaque_count += usize::from(solid);
             }
         }
     }
-    if opaque_count == 0 {
-        return ALL_VISIBLE;
-    }
-    if opaque_count == 4096 {
-        return 0;
-    }
-    let mut result = 0u64;
-    for start in 0..4096usize {
-        if seen[start] {
-            continue;
-        }
-        let mut faces = 0u8;
-        seen[start] = true;
-        stack.push(start);
-        while let Some(c) = stack.pop() {
-            let (x, y, z) = ((c & 15) as i32, (c >> 8) as i32, ((c >> 4) & 15) as i32);
-            if y == 0 {
-                faces |= 1 << 0;
-            }
-            if y == 15 {
-                faces |= 1 << 1;
-            }
-            if z == 0 {
-                faces |= 1 << 2;
-            }
-            if z == 15 {
-                faces |= 1 << 3;
-            }
-            if x == 0 {
-                faces |= 1 << 4;
-            }
-            if x == 15 {
-                faces |= 1 << 5;
-            }
-            // A single connected region touching all six faces sets every
-            // pair (including the diagonal); unvisited cavities cannot add more.
-            if faces == 0b11_1111 {
-                return ALL_VISIBLE;
-            }
-            for (dx, dy, dz) in [
-                (1, 0, 0),
-                (-1, 0, 0),
-                (0, 1, 0),
-                (0, -1, 0),
-                (0, 0, 1),
-                (0, 0, -1),
-            ] {
-                let (nx, ny, nz) = (x + dx, y + dy, z + dz);
-                if !(0..16).contains(&nx) || !(0..16).contains(&ny) || !(0..16).contains(&nz) {
-                    continue;
-                }
-                let n = (ny << 8 | nz << 4 | nx) as usize;
-                if !seen[n] {
-                    seen[n] = true;
-                    stack.push(n);
-                }
-            }
-        }
-        for a in 0..6 {
-            if faces & (1 << a) != 0 {
-                for b in 0..6 {
-                    if faces & (1 << b) != 0 {
-                        result |= 1 << (a * 6 + b);
-                    }
-                }
-            }
-        }
-        if result == ALL_VISIBLE {
-            return result;
-        }
-    }
-    result
+    visgraph::resolve(&opaque, opaque_count, stack)
 }
 #[cfg(test)]
 mod particle_tests;

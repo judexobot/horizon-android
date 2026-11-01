@@ -31,6 +31,7 @@ mod platform {
 }
 #[path = "../../../../crates/horizon-client/src/android/performance.rs"] mod performance;
 #[path = "../../../../crates/horizon-client/src/android/device_math.rs"] mod device_math;
+#[path = "../../../../crates/horizon-client-render/src/mesher/visgraph.rs"] mod visgraph;
 ''', encoding='utf-8')
     subprocess.run(['cargo', 'test', '--manifest-path', str(harness / 'Cargo.toml'),
                     '--', '--test-threads=1'], cwd=ROOT, check=True)

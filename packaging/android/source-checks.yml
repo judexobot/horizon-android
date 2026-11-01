@@ -20,6 +20,8 @@ jobs:
   source:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      CARGO_TARGET_DIR: .local/ci-target
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -28,8 +30,20 @@ jobs:
       - run: git diff --check
       - run: python3 tools/check_public_tree.py --history
       - run: python3 -m unittest discover -s tests -p 'test_android*.py'
+      - name: Restore host Rust dependencies and build cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            .local/ci-target
+          key: android-source-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'tools/test_android*.py') }}
+          restore-keys: |
+            android-source-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-
       - run: python3 tools/test_android_diagnostics.py
       - run: python3 tools/test_android_performance.py
+      - name: Measure section visibility without changing rendered output
+        run: python3 tools/bench_android_visibility.py
       - run: python3 tools/test_android_content.py
       - name: Check workflow export matches the active workflow
         run: cmp .github/workflows/android-source.yml packaging/android/source-checks.yml
@@ -59,6 +73,16 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - name: Restore Android Rust dependencies and build cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            .local/ci-target
+          key: android-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.abi }}-${{ hashFiles('rust-toolchain.toml') }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'tools/android_build.py') }}
+          restore-keys: |
+            android-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.abi }}-${{ hashFiles('rust-toolchain.toml') }}-
       - name: Install Android toolchain
         run: |
           sdkmanager "ndk;28.2.13676358" "build-tools;35.0.0"

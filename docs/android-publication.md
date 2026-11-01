@@ -97,6 +97,12 @@ runs source checks on pushes and pull requests to `android`, with read-only
 permissions. A manual run with `native_checks` enabled also type-checks all four
 Android ABIs. It does not build APKs, use signing keys or publish releases.
 
+The host harnesses share one Cargo target directory so their common dependencies
+are compiled once. Actions caches that directory and downloaded Rust dependencies;
+native checks use a separate cache for each ABI. Cache keys include the pinned
+Rust toolchain and dependency manifests. Cargo still checks changed source files,
+and every existing test and ABI check runs on both cache hits and misses.
+
 ## Upstream maintenance
 
 Fetch and review `upstream/main` before a release. Merge reviewed stable history,

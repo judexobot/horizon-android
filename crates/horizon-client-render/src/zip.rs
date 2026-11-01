@@ -78,10 +78,13 @@ impl Zip {
         let mut archive = self.archive.clone();
         let mut entry = archive.by_index_raw(index).map_err(invalid)?;
         let method = entry.compression();
-        let mut raw = Vec::with_capacity((entry.compressed_size() as usize).min(self.len));
-        entry.read_to_end(&mut raw)?;
+        let capacity = (entry.compressed_size() as usize).min(self.len);
         match method {
-            CompressionMethod::Stored => Ok(raw),
+            CompressionMethod::Stored => {
+                let mut raw = Vec::with_capacity(capacity);
+                entry.read_to_end(&mut raw)?;
+                Ok(raw)
+            }
             CompressionMethod::Deflated => {
                 // Java's ZipFile trusts neither size an entry declares: it
                 // inflates the stream to its end and keeps what comes out.
@@ -91,8 +94,10 @@ impl Zip {
                 // the stream's end, failed whole entries with "corrupt
                 // deflate stream" and with them the whole pack. Only the
                 // size limit stands between the archive and a zip bomb.
-                let decoder = flate2::read::DeflateDecoder::new(raw.as_slice());
-                let mut decoded = Vec::with_capacity(raw.len().min(MAX_ENTRY));
+                // Stream from the shared archive instead of copying the whole
+                // compressed entry into another allocation before inflating it.
+                let decoder = flate2::read::DeflateDecoder::new(entry);
+                let mut decoded = Vec::with_capacity(capacity.min(MAX_ENTRY));
                 decoder
                     .take(MAX_ENTRY as u64 + 1)
                     .read_to_end(&mut decoded)
@@ -224,6 +229,31 @@ mod tests {
         assert_eq!(zip.read("pack.mcmeta").unwrap(), b"{\"pack\":{}}");
         assert_eq!(zip.read("a/b.txt").unwrap(), b"hello hello hello hello");
         assert!(zip.read("missing").is_err());
+    }
+
+    #[test]
+    fn reads_large_entries_repeatedly_with_independent_decoders() {
+        // Incompressible bytes span the decoder's input buffer many times.
+        let mut state = 0x1234_5678u32;
+        let body: Vec<u8> = (0..256 * 1024)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state as u8
+            })
+            .collect();
+        let zip = Zip::from_bytes(archive_of(&[
+            ("compressed.bin", &body, true),
+            ("stored.bin", &body, false),
+            ("empty.bin", b"", true),
+        ]))
+        .unwrap();
+        for _ in 0..3 {
+            assert_eq!(zip.read("compressed.bin").unwrap(), body);
+            assert_eq!(zip.read("empty.bin").unwrap(), b"");
+            assert_eq!(zip.read("stored.bin").unwrap(), body);
+        }
     }
 
     /// The offset of the central-directory header of `name`.
